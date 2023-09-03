@@ -46,8 +46,8 @@ CC BY-SA 4.0 Attribution-ShareAlike 4.0 International License
 #include <NOxGasIndexAlgorithm.h>
 #include <VOCGasIndexAlgorithm.h>
 
-
 #include <U8g2lib.h>
+#include <ElegantOTA.h>
 
 AirGradient ag = AirGradient();
 SensirionI2CSgp41 sgp41;
@@ -162,10 +162,10 @@ void setup() {
   ag.PMS_Init();
   ag.TMP_RH_Init(0x44);
   startServer();
-
 }
 
 void startServer() {
+    ElegantOTA.begin(&server);
     server.on("/metrics", sendToServer);
     server.on("/displayON", displayOn);
     server.on("/displayOFF", displayOff);
