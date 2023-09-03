@@ -1,3 +1,6 @@
+#include <SHTSensor.h>
+#include <arduino-sht.h>
+
 /*
 Important: This code is only for the DIY PRO PCB Version 3.7 that has a push button mounted.
 
@@ -32,7 +35,7 @@ CC BY-SA 4.0 Attribution-ShareAlike 4.0 International License
 #include <AirGradient.h>
 #include <WiFiManager.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
 #include <WiFiClient.h>
 
 #include <EEPROM.h>
@@ -51,6 +54,8 @@ SensirionI2CSgp41 sgp41;
 VOCGasIndexAlgorithm voc_algorithm;
 NOxGasIndexAlgorithm nox_algorithm;
 SHTSensor sht;
+const int port = 9926;
+ESP8266WebServer server(port);
 
 // time in seconds needed for NOx conditioning
 uint16_t conditioning_s = 10;
@@ -67,10 +72,6 @@ U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 
 // CONFIGURATION START
-
-//set to the endpoint you would like to use
-String APIROOT = "http://hw.airgradient.com/";
-
 // set to true to switch from Celcius to Fahrenheit
 boolean inF = false;
 
@@ -118,6 +119,8 @@ int currentState;
 unsigned long pressedTime  = 0;
 unsigned long releasedTime = 0;
 
+void startServer();
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Hello");
@@ -157,16 +160,28 @@ void setup() {
   ag.CO2_Init();
   ag.PMS_Init();
   ag.TMP_RH_Init(0x44);
+    startServer();
+
+}
+
+void startServer() {
+    server.on("/metrics", sendToServer);
+    server.onNotFound(HandleNotFound);
+
+    server.begin();
+    Serial.println("HTTP server started at ip " + WiFi.localIP().toString() + ":" + String(port));
+    updateOLED2("Listening To", WiFi.localIP().toString() + ": ", String(port));
+    delay(6000);
 }
 
 void loop() {
+  server.handleClient();
   currentMillis = millis();
   updateTVOC();
   updateOLED();
   updateCo2();
   updatePm25();
   updateTempHum();
-  sendToServer();
 }
 
 void inConf(){
@@ -364,35 +379,49 @@ void updateOLED2(String ln1, String ln2, String ln3) {
 }
 
 void sendToServer() {
-   if (currentMillis - previoussendToServer >= sendToServerInterval) {
-     previoussendToServer += sendToServerInterval;
-      String payload = "{\"wifi\":" + String(WiFi.RSSI())
-      + (Co2 < 0 ? "" : ", \"rco2\":" + String(Co2))
-      + (pm25 < 0 ? "" : ", \"pm02\":" + String(pm25))
-      + (TVOC < 0 ? "" : ", \"tvoc_index\":" + String(TVOC))
-      + (NOX < 0 ? "" : ", \"nox_index\":" + String(NOX))
-      + ", \"atmp\":" + String(temp)
-      + (hum < 0 ? "" : ", \"rhum\":" + String(hum))
-      + "}";
+    String message = "";
+    String idString = "{id=\"" + String("pi") + "\",mac=\"" + WiFi.macAddress().c_str() + "\"}";
 
-      if(WiFi.status()== WL_CONNECTED){
-        Serial.println(payload);
-        String POSTURL = APIROOT + "sensors/airgradient:" + String(ESP.getChipId(), HEX) + "/measures";
-        Serial.println(POSTURL);
-        WiFiClient client;
-        HTTPClient http;
-        http.begin(client, POSTURL);
-        http.addHeader("content-type", "application/json");
-        int httpCode = http.POST(payload);
-        String response = http.getString();
-        Serial.println(httpCode);
-        Serial.println(response);
-        http.end();
-      }
-      else {
+    // Update sensor data
+      message += "# HELP pm02 Particulate Matter PM2.5 value\n";
+      message += "# TYPE pm02 gauge\n";
+      message += "pm02";
+      message += idString;
+      message += String(pm25);
+      message += "\n";
+      message += "# HELP rco2 CO2 value, in ppm\n";
+      message += "# TYPE rco2 gauge\n";
+      message += "rco2";
+      message += idString;
+      message += String(Co2);
+      message += "\n";
+      message += "# HELP atmp Temperature, in degrees Celsius\n";
+      message += "# TYPE atmp gauge\n";
+      message += "atmp";
+      message += idString;
+      message += String(temp);
+      message += "\n# HELP rhum Relative humidity, in percent\n";
+      message += "# TYPE rhum gauge\n";
+      message += "rhum";
+      message += idString;
+      message += String(hum);
+      message += "\n# HELP tvoc Total volatile organic components, in μg/m³\n";
+      message += "# TYPE tvoc gauge\n";
+      message += "tvoc";
+      message += idString;
+      message += String(TVOC);
+      message += "\n# HELP nox, in μg/m³\n";
+      message += "# TYPE nox gauge\n";
+      message += "nox";
+      message += idString;
+      message += String(NOX);
+      message += "\n";
+
+    if (WiFi.status() == WL_CONNECTED) {
+        server.send(200, "text/plain", message);
+    } else {
         Serial.println("WiFi Disconnected");
-      }
-   }
+    }
 }
 
 // Wifi Manager
@@ -421,4 +450,19 @@ int PM_TO_AQI_US(int pm02) {
   else if (pm02 <= 350.4) return ((400 - 300) / (350.4 - 250.4) * (pm02 - 250.4) + 300);
   else if (pm02 <= 500.4) return ((500 - 400) / (500.4 - 350.4) * (pm02 - 350.4) + 400);
   else return 500;
-};
+}
+
+void HandleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/html", message);
+}
