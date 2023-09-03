@@ -56,6 +56,7 @@ NOxGasIndexAlgorithm nox_algorithm;
 SHTSensor sht;
 const int port = 9926;
 ESP8266WebServer server(port);
+bool display = true;
 
 // time in seconds needed for NOx conditioning
 uint16_t conditioning_s = 10;
@@ -160,17 +161,19 @@ void setup() {
   ag.CO2_Init();
   ag.PMS_Init();
   ag.TMP_RH_Init(0x44);
-    startServer();
+  startServer();
 
 }
 
 void startServer() {
     server.on("/metrics", sendToServer);
+    server.on("/displayON", displayOn);
+    server.on("/displayOFF", displayOff);
     server.onNotFound(HandleNotFound);
 
     server.begin();
     Serial.println("HTTP server started at ip " + WiFi.localIP().toString() + ":" + String(port));
-    updateOLED2("Listening To", WiFi.localIP().toString() + ": ", String(port));
+    updateOLED2("Listening on", WiFi.localIP().toString() + ": ", String(port));
     delay(6000);
 }
 
@@ -333,7 +336,7 @@ void updateTempHum()
       Serial.print("  T:  ");
       Serial.print(sht.getTemperature(), 2);
       Serial.print("\n");
-      temp = sht.getTemperature();
+      temp = sht.getTemperature() - 1.5;
       hum = sht.getHumidity();
   } else {
       Serial.print("Error in readSample()\n");
@@ -367,15 +370,17 @@ void updateOLED() {
 }
 
 void updateOLED2(String ln1, String ln2, String ln3) {
-  char buf[9];
-  u8g2.firstPage();
-  u8g2.firstPage();
-  do {
-  u8g2.setFont(u8g2_font_t0_16_tf);
-  u8g2.drawStr(1, 10, String(ln1).c_str());
-  u8g2.drawStr(1, 30, String(ln2).c_str());
-  u8g2.drawStr(1, 50, String(ln3).c_str());
-    } while ( u8g2.nextPage() );
+  if (DISPLAY) {
+    char buf[9];
+    u8g2.firstPage();
+    u8g2.firstPage();
+    do {
+    u8g2.setFont(u8g2_font_t0_16_tf);
+    u8g2.drawStr(1, 10, String(ln1).c_str());
+    u8g2.drawStr(1, 30, String(ln2).c_str());
+    u8g2.drawStr(1, 50, String(ln3).c_str());
+      } while ( u8g2.nextPage() );
+  }
 }
 
 void sendToServer() {
@@ -424,6 +429,17 @@ void sendToServer() {
     }
 }
 
+void displayOn() {
+  display = true;
+  u8g2.setPowerSave(false);
+}
+
+void displayOff() {
+  display = false;
+  u8g2.clearDisplay();
+  u8g2.setPowerSave(true);
+}
+
 // Wifi Manager
  void connectToWifi() {
    WiFiManager wifiManager;
@@ -450,7 +466,7 @@ int PM_TO_AQI_US(int pm02) {
   else if (pm02 <= 350.4) return ((400 - 300) / (350.4 - 250.4) * (pm02 - 250.4) + 300);
   else if (pm02 <= 500.4) return ((500 - 400) / (500.4 - 350.4) * (pm02 - 350.4) + 400);
   else return 500;
-}
+};
 
 void HandleNotFound() {
   String message = "File Not Found\n\n";
