@@ -126,6 +126,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Hello");
   u8g2.begin();
+  toggleDisplay();
   sht.init();
   sht.setAccuracy(SHTSensor::SHT_ACCURACY_MEDIUM);
   //u8g2.setDisplayRotation(U8G2_R0);
@@ -167,8 +168,7 @@ void setup() {
 void startServer() {
     ElegantOTA.begin(&server);
     server.on("/metrics", sendToServer);
-    server.on("/displayON", displayOn);
-    server.on("/displayOFF", displayOff);
+    server.on("/toggle_display", toggleDisplay);
     server.onNotFound(HandleNotFound);
 
     server.begin();
@@ -336,7 +336,7 @@ void updateTempHum()
       Serial.print("  T:  ");
       Serial.print(sht.getTemperature(), 2);
       Serial.print("\n");
-      temp = sht.getTemperature() - 1.5;
+      temp = sht.getTemperature() - 1.3;
       hum = sht.getHumidity();
   } else {
       Serial.print("Error in readSample()\n");
@@ -429,15 +429,15 @@ void sendToServer() {
     }
 }
 
-void displayOn() {
-  display = true;
-  u8g2.setPowerSave(false);
-}
-
-void displayOff() {
-  display = false;
-  u8g2.clearDisplay();
-  u8g2.setPowerSave(true);
+void toggleDisplay() {
+  if (display) {
+    display = false;
+    u8g2.clearDisplay();
+    u8g2.setPowerSave(true);
+  } else {
+    display = true;
+    u8g2.setPowerSave(false);
+  }
 }
 
 // Wifi Manager
