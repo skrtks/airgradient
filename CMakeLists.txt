@@ -33,6 +33,7 @@ foreach(subdir ${SUBDIRS})
     endif()
 endforeach()
 
+include_directories("/Users/samkortekaas/Documents/Arduino/libraries/HomeKit-ESP8266/src")
 
 add_executable(airgradient
         examples/C02_CALIBRATION/C02_CALIBRATION.ino
@@ -48,4 +49,6 @@ add_executable(airgradient
         examples/PM2_SIMPLE/PM2_SIMPLE.ino
         examples/SHT_SIMPLE/SHT_SIMPLE.ino
         AirGradient.cpp
-        AirGradient.h)
+        AirGradient.h
+        examples/DIY_PRO_V4_2/accessory.c
+)

@@ -49,6 +49,8 @@ CC BY-SA 4.0 Attribution-ShareAlike 4.0 International License
 #include <U8g2lib.h>
 #include <ElegantOTA.h>
 
+#include <arduino_homekit_server.h>
+
 AirGradient ag = AirGradient();
 SensirionI2CSgp41 sgp41;
 VOCGasIndexAlgorithm voc_algorithm;
@@ -163,12 +165,14 @@ void setup() {
   ag.PMS_Init();
   ag.TMP_RH_Init(0x44);
   startServer();
+  my_homekit_setup();
 }
 
 void startServer() {
     ElegantOTA.begin(&server);
     server.on("/metrics", sendToServer);
     server.on("/toggle_display", toggleDisplay);
+    server.on("/homekit_reset", homekitReset);
     server.onNotFound(HandleNotFound);
 
     server.begin();
@@ -185,6 +189,7 @@ void loop() {
   updateCo2();
   updatePm25();
   updateTempHum();
+  my_homekit_loop();
 }
 
 void inConf(){
@@ -440,6 +445,11 @@ void toggleDisplay() {
   }
 }
 
+void homekitReset() {
+  homekit_storage_reset();
+  server.send(200, "text/plain", "Reset homekit service");
+}
+
 // Wifi Manager
  void connectToWifi() {
    WiFiManager wifiManager;
@@ -468,6 +478,14 @@ int PM_TO_AQI_US(int pm02) {
   else return 500;
 };
 
+// Calculate PM2.5 US AQI
+int PM_TO_HOMEKIT_AQI(int pm02) {
+  if (pm02 <= 10.0) return 2;
+  else if (pm02 <= 35.4) return 3;
+  else if (pm02 <= 55.4) return 4;
+  else return 5;
+}
+
 void HandleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -481,4 +499,54 @@ void HandleNotFound() {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
   server.send(404, "text/html", message);
+}
+
+//==============================
+// Homekit setup and loop
+//==============================
+
+// access your homekit characteristics defined in my_accessory.c
+extern "C" homekit_server_config_t config;
+extern "C" homekit_characteristic_t cha_current_temperature;
+extern "C" homekit_characteristic_t cha_current_aqi;
+extern "C" homekit_characteristic_t cha_current_pm25;
+extern "C" homekit_characteristic_t cha_current_voc;
+extern "C" homekit_characteristic_t cha_current_co2;
+extern "C" homekit_characteristic_t cha_humidity;
+
+static uint32_t next_heap_millis = 0;
+static uint32_t next_report_millis = 0;
+
+void my_homekit_setup() {
+	arduino_homekit_setup(&config);
+}
+
+void my_homekit_loop() {
+	arduino_homekit_loop();
+	const uint32_t t = millis();
+	if (t > next_report_millis) {
+		// report sensor values every 10 seconds
+		next_report_millis = t + 10 * 1000;
+		my_homekit_report();
+	}
+	if (t > next_heap_millis) {
+		// show heap info every 5 seconds
+		next_heap_millis = t + 5 * 1000;
+	}
+}
+
+void my_homekit_report() {
+    cha_current_temperature.value.float_value = temp;
+    cha_humidity.value.float_value = hum;
+    cha_current_aqi.value.int_value = PM_TO_HOMEKIT_AQI(pm25);
+    cha_current_pm25.value.float_value = pm25;
+    cha_current_voc.value.float_value = TVOC;
+    cha_current_co2.value.float_value = Co2;
+
+    homekit_characteristic_notify(&cha_current_temperature, cha_current_temperature.value);
+    homekit_characteristic_notify(&cha_humidity, cha_humidity.value);
+    homekit_characteristic_notify(&cha_current_aqi, cha_current_aqi.value);
+    homekit_characteristic_notify(&cha_current_pm25, cha_current_pm25.value);
+    homekit_characteristic_notify(&cha_current_voc, cha_current_voc.value);
+    homekit_characteristic_notify(&cha_current_co2, cha_current_co2.value);
 }
