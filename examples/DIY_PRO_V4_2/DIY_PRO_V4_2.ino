@@ -128,7 +128,6 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Hello");
   u8g2.begin();
-  toggleDisplay();
   sht.init();
   sht.setAccuracy(SHTSensor::SHT_ACCURACY_MEDIUM);
   //u8g2.setDisplayRotation(U8G2_R0);
@@ -165,7 +164,8 @@ void setup() {
   ag.PMS_Init();
   ag.TMP_RH_Init(0x44);
   startServer();
-  my_homekit_setup();
+  toggleDisplay();
+  // my_homekit_setup();
 }
 
 void startServer() {
@@ -189,7 +189,7 @@ void loop() {
   updateCo2();
   updatePm25();
   updateTempHum();
-  my_homekit_loop();
+  // my_homekit_loop();
 }
 
 void inConf(){
@@ -341,7 +341,7 @@ void updateTempHum()
       Serial.print("  T:  ");
       Serial.print(sht.getTemperature(), 2);
       Serial.print("\n");
-      temp = sht.getTemperature() - 1.3;
+      temp = sht.getTemperature();
       hum = sht.getHumidity();
   } else {
       Serial.print("Error in readSample()\n");
